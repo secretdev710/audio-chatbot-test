@@ -4,83 +4,51 @@ import RecordRTC from "recordrtc";
 
 import "./App.css";
 
-const socket = io("http://localhost:8000");
+const socket = io("https://bb4d-38-170-181-10.ngrok-free.app");
+
+function isAudioPlaying(audio: HTMLAudioElement) {
+  return !audio.paused && !audio.ended && audio.readyState > 2;
+}
 
 function App() {
   const [transcript, setTranscript] = useState("");
-  const [responseText, setResponseText] = useState("");
-  const audioChunksRef = useRef<Blob[]>([]);
-  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
-  const mediaRecorderRef = useRef<RecordRTC | null>(null);
+  const mediaSource = new MediaSource();
+  const audio = new Audio();
+  audio.src = URL.createObjectURL(mediaSource);
 
   useEffect(() => {
-    socket.on("connect", () => console.log("Connected to server"));
+    mediaSource.addEventListener("sourceopen", () => {
+      const sourceBuffer = mediaSource.addSourceBuffer("audio/mpeg");
 
-    socket.on("transcription", (data: string) => {
-      setTranscript((prevTranscript) => prevTranscript + " " + data);
-    });
+      socket.on("response_audio", (chunk: ArrayBuffer) => {
+        console.log("response arrived");
+        if (!sourceBuffer.updating) {
+          sourceBuffer.appendBuffer(new Uint8Array(chunk)); // Append new chunk
+        }
 
-    socket.on("response_text", (data: string) => {
-      setResponseText((prevResponse) => prevResponse + " " + data);
-    });
-
-    socket.on("response_audio", (chunk: ArrayBuffer) => {
-      const blob = new Blob([chunk], { type: "audio/webm" });
-      const url = URL.createObjectURL(blob); // Create an Object URL
-
-      // Play the audio immediately
-      const audio = new Audio(url);
-      audio.play();
+        if (!isAudioPlaying(audio)) {
+          audio.play();
+        }
+      });
     });
 
     return () => {
-      socket.off("transcription");
-      socket.off("response_text");
-      socket.off("audio_chunk");
+      socket.off("response_audio");
     };
   }, []);
 
-  const startRecording = async () => {
-    console.log("start recording");
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorderRef.current = new RecordRTC(stream, {
-      type: "audio",
-      mimeType: "audio/webm",
-      recorderType: RecordRTC.StereoAudioRecorder,
-      timeSlice: 500,
-      ondataavailable: (blob: Blob) => {
-        blob.arrayBuffer().then((buffer) => {
-          socket.emit("send_audio_chunk", buffer);
-        });
-      },
-    });
-
-    mediaRecorderRef.current.startRecording();
-  };
-
-  const stopRecording = () => {
-    console.log("stop recording");
-    if (mediaRecorderRef.current) {
-      mediaRecorderRef.current.stopRecording(() => {
-        mediaRecorderRef.current = null;
-      });
-    }
-  };
-
   const submitTranscript = () => {
+    console.log(transcript);
     socket.emit("submit_transcript", transcript);
   };
 
   return (
     <div className="App">
-      <h1>Live Transcription System</h1>
-      <button onClick={startRecording}>Start Recording</button>
-      <button onClick={stopRecording}>Stop Recording</button>
-      <h2>Transcript:</h2>
-      <p>{transcript}</p>
+      <textarea
+        style={{ width: 500, height: 300 }}
+        onChange={(event) => setTranscript(event.target.value)}
+      />
       <button onClick={submitTranscript}>Submit Transcript</button>
-      <h2>Response:</h2>
-      <p>{responseText}</p>
     </div>
   );
 }
