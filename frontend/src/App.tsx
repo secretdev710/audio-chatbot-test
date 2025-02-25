@@ -4,7 +4,7 @@ import RecordRTC from "recordrtc";
 
 import "./App.css";
 
-const socket = io("https://bb4d-38-170-181-10.ngrok-free.app");
+const socket = io("wss://bb4d-38-170-181-10.ngrok-free.app");
 
 function isAudioPlaying(audio: HTMLAudioElement) {
   return !audio.paused && !audio.ended && audio.readyState > 2;
